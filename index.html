@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- Налаштування для iPhone та iPad (додавання на екран «Додому» як повноцінний додаток) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Точки і Квадрати">
+    <meta name="theme-color" content="#0b0d14">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%230b0d14'/%3E%3Crect x='36' y='36' width='108' height='108' rx='12' fill='none' stroke='%23ff2a5f' stroke-width='8'/%3E%3Cpath d='M90 122l-6-5.5C63 97.5 50 85.5 50 71c0-12 9.5-21.5 21.5-21.5 6.8 0 13.3 3.2 18.5 8.2 5.2-5 11.7-8.2 18.5-8.2 12 0 21.5 9.5 21.5 21.5 0 14.5-13 26.5-34 45.5L90 122z' fill='none' stroke='%23ff2a5f' stroke-width='7'/%3E%3Ccircle cx='36' cy='36' r='7' fill='%23ffffff'/%3E%3Ccircle cx='144' cy='36' r='7' fill='%23ffffff'/%3E%3Ccircle cx='36' cy='144' r='7' fill='%23ffffff'/%3E%3Ccircle cx='144' cy='144' r='7' fill='%23ffffff'/%3E%3C/svg%3E">
+    <title>Точки та квадрати з кубиком</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        html, body {
+            background-color: #0b0d14;
+            color: #f8fafc;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            overscroll-behavior: none;
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Урахування безпечних зон iPhone (Dynamic Island / Notch та нижня смужка Home) */
+        .safe-header {
+            padding-top: max(0.5rem, env(safe-area-inset-top));
+            padding-left: max(0.75rem, env(safe-area-inset-left));
+            padding-right: max(0.75rem, env(safe-area-inset-right));
+        }
+
+        .safe-bottom-bar {
+            bottom: max(0.85rem, env(safe-area-inset-bottom));
+            left: max(0.75rem, env(safe-area-inset-left));
+            right: max(0.75rem, env(safe-area-inset-right));
+        }
+
+        .safe-modal {
+            padding-top: max(1rem, env(safe-area-inset-top));
+            padding-bottom: max(1rem, env(safe-area-inset-bottom));
+            padding-left: max(1rem, env(safe-area-inset-left));
+            padding-right: max(1rem, env(safe-area-inset-right));
+        }
+
+        /* Неонові світіння */
+        .glow-red {
+            box-shadow: 0 0 18px rgba(255, 42, 95, 0.4);
+        }
+        .glow-blue {
+            box-shadow: 0 0 18px rgba(0, 210, 255, 0.4);
+        }
+
+        /* Анімований кубик */
+        .dice-box {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(145deg, #1e2336, #131624);
+            border: 2px solid rgba(255, 255, 255, 0.18);
+            border-radius: 12px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            padding: 7px;
+            gap: 2.5px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s;
+            shrink: 0;
+        }
+
+        @media (min-width: 640px) {
+            .dice-box {
+                width: 54px;
+                height: 54px;
+                padding: 8px;
+                gap: 3px;
+            }
+        }
+
+        .dice-box.rolling {
+            animation: diceShake 0.42s ease-in-out infinite;
+            border-color: #a855f7;
+            box-shadow: 0 0 22px rgba(168, 85, 247, 0.5);
+        }
+
+        @keyframes diceShake {
+            0% { transform: rotate(0deg) scale(1.05); }
+            25% { transform: rotate(-14deg) scale(1.12); }
+            50% { transform: rotate(12deg) scale(1.05); }
+            75% { transform: rotate(-8deg) scale(1.1); }
+            100% { transform: rotate(0deg) scale(1.05); }
+        }
+
+        .pip {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: #f8fafc;
+            box-shadow: 0 0 6px rgba(255, 255, 255, 0.85);
+            opacity: 0;
+            transform: scale(0.4);
+            transition: opacity 0.1s, transform 0.12s;
+        }
+
+        .pip.active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Кастомний скролбар */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2b324d;
+            border-radius: 3px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        canvas.pan-mode {
+            cursor: grab;
+        }
+        canvas.pan-mode:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ВЕРХНЯ ПАНЕЛЬ СТАТУСУ ТА РАХУНКУ (Адаптована для iPhone, iPad і ПК) -->
+    <header class="safe-header w-full bg-[#111420]/95 backdrop-blur-md border-b border-slate-800/80 pb-2.5 sm:px-6 flex flex-wrap items-center justify-between gap-2 z-20 shrink-0">
+        <!-- Блок рахунку гравців -->
+        <div class="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-2 sm:gap-3">
+            <!-- Картка Серця -->
+            <div id="card-heart" class="flex-1 sm:flex-initial flex items-center gap-2 sm:gap-2.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-[#ff2a5f]/35 transition-all duration-300">
+                <div class="w-7 h-7 rounded-lg bg-[#ff2a5f]/15 flex items-center justify-center text-[#ff2a5f] shrink-0">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    </svg>
+                </div>
+                <div class="min-w-0">
+                    <div id="label-heart" class="text-[10px] sm:text-[11px] uppercase tracking-wider font-semibold text-slate-400 truncate">Ви</div>
+                    <div id="score-heart" class="text-base sm:text-xl font-extrabold text-[#ff2a5f] leading-none">0</div>
+                </div>
+            </div>
+
+            <div class="text-slate-600 font-bold text-xs">VS</div>
+
+            <!-- Картка Хрестика -->
+            <div id="card-cross" class="flex-1 sm:flex-initial flex items-center gap-2 sm:gap-2.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-[#00d2ff]/35 transition-all duration-300">
+                <div class="w-7 h-7 rounded-lg bg-[#00d2ff]/15 flex items-center justify-center text-[#00d2ff] shrink-0">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+                        <line x1="5" y1="5" x2="19" y2="19"></line>
+                        <line x1="19" y1="5" x2="5" y2="19"></line>
+                    </svg>
+                </div>
+                <div class="min-w-0">
+                    <div id="label-cross" class="text-[10px] sm:text-[11px] uppercase tracking-wider font-semibold text-slate-400 truncate">ШІ</div>
+                    <div id="score-cross" class="text-base sm:text-xl font-extrabold text-[#00d2ff] leading-none">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Центральна панель: Кубик, статус ходу та кнопка кидка -->
+        <div class="flex items-center justify-between w-full sm:w-auto gap-2.5 sm:gap-3.5 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-2xl">
+            <div class="flex items-center gap-2.5 sm:gap-3">
+                <div id="dice-visual" class="dice-box shrink-0" title="Випале число на кубику">
+                    <div class="pip" data-pip="0"></div>
+                    <div class="pip" data-pip="1"></div>
+                    <div class="pip" data-pip="2"></div>
+                    <div class="pip" data-pip="3"></div>
+                    <div class="pip" data-pip="4"></div>
+                    <div class="pip" data-pip="5"></div>
+                    <div class="pip" data-pip="6"></div>
+                    <div class="pip" data-pip="7"></div>
+                    <div class="pip" data-pip="8"></div>
+                </div>
+
+                <div class="flex flex-col">
+                    <span id="turn-badge" class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-[#ff2a5f]">Ваш хід</span>
+                    <div id="moves-left-display" class="text-xs sm:text-sm font-bold text-white leading-tight">
+                        Киньте кубик
+                    </div>
+                    <div id="grid-info-display" class="text-[10px] sm:text-[11px] text-slate-400">Сітка: 10×10</div>
+                </div>
+            </div>
+
+            <button id="btn-roll" class="min-h-[44px] px-4 py-2 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-400 hover:to-pink-400 text-white shadow-lg shadow-purple-500/25 active:scale-95 transition-all cursor-pointer shrink-0">
+                🎲 Кинути
+            </button>
+        </div>
+    </header>
+
+    <!-- ІГРОВА ОБЛАСТЬ (CANVAS) -->
+    <main id="canvas-wrapper" class="relative flex-1 w-full h-full overflow-hidden bg-[#0b0d14]">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Спливаюче повідомлення -->
+        <div id="toast-msg" class="pointer-events-none fixed top-28 sm:top-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-slate-900/95 border border-slate-700 text-xs sm:text-sm font-medium text-slate-100 shadow-xl opacity-0 transition-opacity duration-300 z-30 whitespace-nowrap max-w-[92vw] truncate">
+            Повідомлення
+        </div>
+
+        <!-- НИЖНЯ ПЛАВАЮЧА ПАНЕЛЬ ІНСТРУМЕНТІВ (Зручні кнопки 44px+ для великого пальця на iPhone/iPad) -->
+        <div class="safe-bottom-bar fixed flex items-center justify-between gap-2 z-20 pointer-events-none">
+            <!-- Ліва група: Режим огляду та фокус на останній хід -->
+            <div class="flex items-center gap-1.5 pointer-events-auto">
+                <button id="btn-toggle-pan" class="min-h-[44px] px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/90 text-slate-200 text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5 active:scale-95 transition cursor-pointer" title="Перемкнути режим малювання або огляду поля">
+                    <span id="pan-icon" class="text-base">✏️</span>
+                    <span id="pan-text" class="hidden sm:inline">Лінії</span>
+                </button>
+
+                <button id="btn-focus-last" class="min-h-[44px] px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/90 text-slate-200 text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5 active:scale-95 transition cursor-pointer" title="Показати останню проведену лінію">
+                    <span class="text-base">📍</span>
+                    <span class="hidden md:inline">Останній хід</span>
+                </button>
+            </div>
+
+            <!-- Центральна група: Масштаб (Zoom) -->
+            <div class="flex items-center bg-slate-900/90 border border-slate-700/90 rounded-xl p-0.5 shadow-lg backdrop-blur-md pointer-events-auto">
+                <button id="btn-zoom-out" class="w-10 h-10 sm:w-11 sm:h-11 rounded-lg hover:bg-slate-800 active:bg-slate-700 text-slate-200 font-bold text-lg flex items-center justify-center transition cursor-pointer" title="Зменшити">−</button>
+                <button id="btn-reset-view" class="px-2 h-10 sm:h-11 rounded-lg hover:bg-slate-800 text-xs font-mono text-slate-300 min-w-[46px] text-center transition cursor-pointer" title="Скинути масштаб та центрувати">
+                    <span id="zoom-level-text">100%</span>
+                </button>
+                <button id="btn-zoom-in" class="w-10 h-10 sm:w-11 sm:h-11 rounded-lg hover:bg-slate-800 active:bg-slate-700 text-slate-200 font-bold text-lg flex items-center justify-center transition cursor-pointer" title="Збільшити">+</button>
+            </div>
+
+            <!-- Права група: Звук та Меню -->
+            <div class="flex items-center gap-1.5 pointer-events-auto">
+                <button id="btn-sound" class="w-11 h-11 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/90 text-slate-200 text-base flex items-center justify-center shadow-lg backdrop-blur-md active:scale-95 transition cursor-pointer" title="Звукові ефекти">
+                    🔊
+                </button>
+                <button id="btn-settings" class="min-h-[44px] px-3 sm:px-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/90 text-slate-200 text-xs font-semibold flex items-center gap-1.5 shadow-lg backdrop-blur-md active:scale-95 transition cursor-pointer" title="Налаштування та нова гра">
+                    <span class="text-base">⚙️</span>
+                    <span class="hidden sm:inline">Меню</span>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- МОДАЛЬНЕ ВІКНО НАЛАШТУВАНЬ ТА ПУБЛІКАЦІЇ НА GITHUB -->
+    <div id="modal-settings" class="safe-modal fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
+        <div class="bg-[#121624] border border-slate-800 rounded-3xl max-w-lg w-full p-5 sm:p-7 shadow-2xl max-h-full overflow-y-auto">
+            <div class="flex items-start justify-between gap-3 mb-4">
+                <div>
+                    <h1 class="text-xl sm:text-3xl font-extrabold bg-gradient-to-r from-[#ff2a5f] via-purple-400 to-[#00d2ff] bg-clip-text text-transparent">
+                        Точки та Квадрати
+                    </h1>
+                    <p class="text-xs sm:text-sm text-slate-400 mt-0.5">Кидай кубик, з'єднуй точки та захоплюй клітинки!</p>
+                </div>
+                <button id="btn-close-settings" class="hidden w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center shrink-0 cursor-pointer">✕</button>
+            </div>
+
+            <!-- 1. Розмір сітки точок -->
+            <div class="mb-4">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">1. Розмір сітки точок</label>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="grid-size-options">
+                    <button type="button" data-size="5" class="size-btn min-h-[52px] py-2 px-2.5 rounded-xl border border-slate-700 bg-slate-900/70 hover:border-slate-500 text-center transition cursor-pointer">
+                        <div class="font-bold text-sm text-white">5×5</div>
+                        <div class="text-[10px] text-slate-400">Швидка</div>
+                    </button>
+                    <button type="button" data-size="10" class="size-btn active min-h-[52px] py-2 px-2.5 rounded-xl border-2 border-purple-500 bg-purple-500/15 text-center transition cursor-pointer">
+                        <div class="font-bold text-sm text-white">10×10</div>
+                        <div class="text-[10px] text-purple-300">Класика</div>
+                    </button>
+                    <button type="button" data-size="15" class="size-btn min-h-[52px] py-2 px-2.5 rounded-xl border border-slate-700 bg-slate-900/70 hover:border-slate-500 text-center transition cursor-pointer">
+                        <div class="font-bold text-sm text-white">15×15</div>
+                        <div class="text-[10px] text-slate-400">Велика</div>
+                    </button>
+                    <button type="button" data-size="100" class="size-btn min-h-[52px] py-2 px-2.5 rounded-xl border border-slate-700 bg-slate-900/70 hover:border-amber-500/60 text-center transition cursor-pointer">
+                        <div class="font-bold text-sm text-amber-400">100×100</div>
+                        <div class="text-[10px] text-amber-300/80">Мега карта</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Вибір символу та кольору гравця -->
+            <div class="mb-4">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">2. Ваш символ та колір</label>
+                <div class="grid grid-cols-2 gap-2.5" id="symbol-options">
+                    <button type="button" data-symbol="heart" class="symbol-btn active p-2.5 sm:p-3 rounded-2xl border-2 border-[#ff2a5f] bg-[#ff2a5f]/15 flex items-center gap-2.5 transition cursor-pointer">
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#ff2a5f]/20 flex items-center justify-center text-[#ff2a5f] shrink-0">
+                            <svg class="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6">
+                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                            </svg>
+                        </div>
+                        <div class="text-left min-w-0">
+                            <div class="font-bold text-xs sm:text-sm text-white truncate">Червоне Серце</div>
+                            <div class="text-[10px] sm:text-[11px] text-rose-300 truncate">Проти Синього ❌</div>
+                        </div>
+                    </button>
+
+                    <button type="button" data-symbol="cross" class="symbol-btn p-2.5 sm:p-3 rounded-2xl border border-slate-700 bg-slate-900/70 hover:border-slate-500 flex items-center gap-2.5 transition cursor-pointer">
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#00d2ff]/20 flex items-center justify-center text-[#00d2ff] shrink-0">
+                            <svg class="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+                                <line x1="5" y1="5" x2="19" y2="19"></line>
+                                <line x1="19" y1="5" x2="5" y2="19"></line>
+                            </svg>
+                        </div>
+                        <div class="text-left min-w-0">
+                            <div class="font-bold text-xs sm:text-sm text-white truncate">Синій Хрестик</div>
+                            <div class="text-[10px] sm:text-[11px] text-sky-300 truncate">Проти Червоного ❤️</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3. Складність ШІ -->
+            <div class="mb-4">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">3. Складність комп'ютера</label>
+                <div class="grid grid-cols-3 gap-2" id="ai-options">
+                    <button type="button" data-ai="easy" class="ai-btn min-h-[42px] py-2 px-2 rounded-xl border border-slate-700 bg-slate-900/70 text-xs sm:text-sm font-semibold text-slate-300 hover:border-slate-500 transition cursor-pointer">
+                        Легкий
+                    </button>
+                    <button type="button" data-ai="medium" class="ai-btn active min-h-[42px] py-2 px-2 rounded-xl border-2 border-purple-500 bg-purple-500/15 text-xs sm:text-sm font-bold text-white transition cursor-pointer">
+                        Середній
+                    </button>
+                    <button type="button" data-ai="smart" class="ai-btn min-h-[42px] py-2 px-2 rounded-xl border border-slate-700 bg-slate-900/70 text-xs sm:text-sm font-semibold text-slate-300 hover:border-slate-500 transition cursor-pointer">
+                        Складний
+                    </button>
+                </div>
+            </div>
+
+            <!-- 4. Правило бонусної лінії -->
+            <div class="mb-4 p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-3">
+                <div>
+                    <div class="text-xs sm:text-sm font-bold text-white">Бонусна лінія за квадрат</div>
+                    <div class="text-[11px] text-slate-400">Дає +1 додаткову лінію за кожен закритий квадрат</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" id="toggle-bonus" class="sr-only peer">
+                    <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                </label>
+            </div>
+
+            <!-- 5. Компактна інструкція для GitHub Pages + iPhone/iPad -->
+            <details class="mb-5 rounded-2xl bg-slate-900/60 border border-slate-800/90 text-xs text-slate-300">
+                <summary class="px-3.5 py-2.5 font-semibold text-slate-200 cursor-pointer flex items-center justify-between">
+                    <span>📱 Як опублікувати на GitHub та грати на iPhone/iPad</span>
+                    <span class="text-slate-500 text-[10px]">Натисніть</span>
+                </summary>
+                <div class="px-3.5 pb-3 pt-1 text-[11px] leading-relaxed text-slate-400 space-y-1.5 border-t border-slate-800/60">
+                    <p><strong class="text-slate-200">1. GitHub:</strong> Створіть новий репозиторій на GitHub, завантажте цей файл під назвою <code class="text-purple-300 bg-slate-800 px-1 rounded">index.html</code>.</p>
+                    <p><strong class="text-slate-200">2. GitHub Pages:</strong> Зайдіть у <em>Settings → Pages</em>, у розділі <em>Branch</em> виберіть <code class="text-purple-300 bg-slate-800 px-1 rounded">main</code> і натисніть <em>Save</em>. Через хвилину з'явиться посилання на гру.</p>
+                    <p><strong class="text-slate-200">3. iPhone / iPad:</strong> Відкрийте посилання в Safari → натисніть кнопку <em>«Поділитися»</em> (квадрат зі стрілкою вгору) → <em>«На екран «Додому»»</em>. Гра відкриватиметься на весь екран як додаток!</p>
+                </div>
+            </details>
+
+            <button id="btn-start-game" class="w-full min-h-[48px] py-3 rounded-2xl font-extrabold text-sm sm:text-base bg-gradient-to-r from-[#ff2a5f] via-purple-600 to-[#00d2ff] hover:opacity-95 text-white shadow-xl shadow-purple-600/25 active:scale-[0.99] transition-all cursor-pointer">
+                🚀 Почати гру
+            </button>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНЕ ВІКНО ЗАВЕРШЕННЯ ГРИ -->
+    <div id="modal-gameover" class="safe-modal hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
+        <div class="bg-[#121624] border border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-7 text-center shadow-2xl">
+            <div id="winner-emoji" class="text-5xl mb-2">🏆</div>
+            <h2 id="winner-title" class="text-2xl sm:text-3xl font-extrabold text-white mb-1.5">Ви перемогли!</h2>
+            <p id="winner-subtitle" class="text-xs sm:text-sm text-slate-400 mb-5">Чудова стратегія та влучні кидки кубика.</p>
+
+            <div class="grid grid-cols-2 gap-3 mb-5">
+                <div class="p-3.5 rounded-2xl bg-[#ff2a5f]/10 border border-[#ff2a5f]/35">
+                    <div class="text-xs font-bold uppercase text-rose-300 mb-1">❤️ Серця</div>
+                    <div id="final-score-heart" class="text-2xl sm:text-3xl font-extrabold text-[#ff2a5f]">0</div>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-[#00d2ff]/10 border border-[#00d2ff]/35">
+                    <div class="text-xs font-bold uppercase text-sky-300 mb-1">❌ Хрестики</div>
+                    <div id="final-score-cross" class="text-2xl sm:text-3xl font-extrabold text-[#00d2ff]">0</div>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2.5">
+                <button id="btn-rematch" class="flex-1 min-h-[46px] py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg transition cursor-pointer">
+                    🔄 Реванш
+                </button>
+                <button id="btn-gameover-settings" class="flex-1 min-h-[46px] py-3 px-4 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer">
+                    ⚙️ Налаштування
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ТОЧКИ ТА КВАДРАТИ З КУБИКОМ
+         * Оптимізовано для GitHub Pages, iPhone, iPad (iOS Safari) та Desktop.
+         */
+
+        // --- ЗВУКОВИЙ РУШІЙ (Web Audio API з автоматичним розблокуванням на iOS) ---
+        class SoundFX {
+            constructor() {
+                this.enabled = true;
+                this.ctx = null;
+            }
+
+            unlock() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) this.ctx = new AudioContext();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume().catch(() => {});
+                }
+            }
+
+            playTone(freq, type = 'sine', duration = 0.1, vol = 0.12) {
+                if (!this.enabled) return;
+                try {
+                    this.unlock();
+                    if (!this.ctx) return;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch (e) {}
+            }
+
+            playDice() {
+                this.playTone(320, 'triangle', 0.06, 0.1);
+                setTimeout(() => this.playTone(480, 'triangle', 0.08, 0.1), 60);
+            }
+
+            playLine(isHuman) {
+                this.playTone(isHuman ? 540 : 390, 'sine', 0.08, 0.11);
+            }
+
+            playCapture(isHuman) {
+                if (isHuman) {
+                    this.playTone(587.33, 'triangle', 0.14, 0.16);
+                    setTimeout(() => this.playTone(880, 'sine', 0.22, 0.18), 70);
+                } else {
+                    this.playTone(440, 'triangle', 0.14, 0.13);
+                    setTimeout(() => this.playTone(330, 'sine', 0.2, 0.13), 70);
+                }
+            }
+
+            playWin() {
+                [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+                    setTimeout(() => this.playTone(f, 'triangle', 0.25, 0.16), i * 110);
+                });
+            }
+        }
+
+        const sfx = new SoundFX();
+
+        // Розблокування звуку при першому дотику на iPhone / iPad
+        ['touchstart', 'pointerdown', 'click'].forEach(evt => {
+            window.addEventListener(evt, () => sfx.unlock(), { once: true, passive: true });
+        });
+
+        // --- НЕОНОВІ КОЛЬОРИ (Як на ескізі) ---
+        const COLORS = {
+            bg: '#0b0d14',
+            dot: '#ffffff',
+            heart: '#ff2a5f',
+            heartGlow: 'rgba(255, 42, 95, 0.6)',
+            heartFill: 'rgba(255, 42, 95, 0.10)',
+            cross: '#00d2ff',
+            crossGlow: 'rgba(0, 210, 255, 0.6)',
+            crossFill: 'rgba(0, 210, 255, 0.10)',
+            gridHint: 'rgba(255, 255, 255, 0.035)'
+        };
+
+        const DICE_PIPS = {
+            1: [4],
+            2: [2, 6],
+            3: [2, 4, 6],
+            4: [0, 2, 6, 8],
+            5: [0, 2, 4, 6, 8],
+            6: [0, 2, 3, 5, 6, 8]
+        };
+
+        // --- КОНФІГУРАЦІЯ ТА СТАН ГРИ ---
+        const config = {
+            gridSize: 10,
+            humanSymbol: 'heart',
+            aiSymbol: 'cross',
+            aiDifficulty: 'medium',
+            bonusTurn: false
+        };
+
+        const state = {
+            isPlaying: false,
+            turn: 'human',
+            phase: 'roll',          // 'roll', 'rolling', 'draw', 'gameover'
+            movesLeft: 0,
+            diceValue: 1,
+            scores: { heart: 0, cross: 0 },
+            totalBoxes: 81,
+            totalLines: 180,
+            drawnLinesCount: 0,
+
+            hLines: null,
+            vLines: null,
+            boxes: null,
+            boxAnim: null,
+            activeAnims: new Set(),
+            lastLine: null,
+
+            // Камера
+            cellSize: 48,
+            scale: 1,
+            minScale: 0.15,
+            maxScale: 3.5,
+            offsetX: 0,
+            offsetY: 0,
+            targetOffsetX: null,
+            targetOffsetY: null,
+
+            // Взаємодія (миша + мультитач iOS)
+            hoveredEdge: null,
+            touchPreviewEdge: null,
+            isTouchDevice: false,
+            panMode: false,
+            spacePressed: false,
+            isDragging: false,
+            dragStartX: 0,
+            dragStartY: 0,
+            dragMoved: false,
+            lastPinchDist: 0,
+            lastPinchMidX: 0,
+            lastPinchMidY: 0
+        };
+
+        // --- DOM ЕЛЕМЕНТИ ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const wrapper = document.getElementById('canvas-wrapper');
+
+        const elCardHeart = document.getElementById('card-heart');
+        const elCardCross = document.getElementById('card-cross');
+        const elLabelHeart = document.getElementById('label-heart');
+        const elLabelCross = document.getElementById('label-cross');
+        const elScoreHeart = document.getElementById('score-heart');
+        const elScoreCross = document.getElementById('score-cross');
+
+        const elDiceVisual = document.getElementById('dice-visual');
+        const elTurnBadge = document.getElementById('turn-badge');
+        const elMovesLeft = document.getElementById('moves-left-display');
+        const elGridInfo = document.getElementById('grid-info-display');
+        const btnRoll = document.getElementById('btn-roll');
+
+        const modalSettings = document.getElementById('modal-settings');
+        const modalGameover = document.getElementById('modal-gameover');
+        const toastMsg = document.getElementById('toast-msg');
+
+        // --- СПЛИВАЮЧІ ПІДКАЗКИ ---
+        let toastTimer = null;
+        function showToast(text) {
+            toastMsg.textContent = text;
+            toastMsg.style.opacity = '1';
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toastMsg.style.opacity = '0';
+            }, 2300);
+        }
+
+        function setDiceFace(val) {
+            const activePips = DICE_PIPS[val] || [];
+            const pips = elDiceVisual.querySelectorAll('.pip');
+            pips.forEach((pip, idx) => {
+                pip.classList.toggle('active', activePips.includes(idx));
+            });
+        }
+
+        // --- ІНІЦІАЛІЗАЦІЯ ГРИ ---
+        function initGame() {
+            const N = config.gridSize;
+            config.aiSymbol = config.humanSymbol === 'heart' ? 'cross' : 'heart';
+
+            state.hLines = new Uint8Array(N * (N - 1));
+            state.vLines = new Uint8Array((N - 1) * N);
+            state.boxes = new Uint8Array((N - 1) * (N - 1));
+            state.boxAnim = new Float32Array((N - 1) * (N - 1));
+            state.activeAnims.clear();
+
+            state.totalBoxes = (N - 1) * (N - 1);
+            state.totalLines = 2 * N * (N - 1);
+            state.drawnLinesCount = 0;
+            state.scores = { heart: 0, cross: 0 };
+            state.lastLine = null;
+            state.hoveredEdge = null;
+            state.touchPreviewEdge = null;
+            state.targetOffsetX = null;
+            state.targetOffsetY = null;
+
+            state.isPlaying = true;
+            state.turn = 'human';
+            state.phase = 'roll';
+            state.movesLeft = 0;
+            state.diceValue = 1;
+            setDiceFace(1);
+
+            elLabelHeart.textContent = config.humanSymbol === 'heart' ? 'Ви ❤️' : 'ШІ ❤️';
+            elLabelCross.textContent = config.humanSymbol === 'cross' ? 'Ви ❌' : 'ШІ ❌';
+            elGridInfo.textContent = `Сітка: ${N}×${N} (${state.totalBoxes} кл.)`;
+
+            resetCameraView();
+            updateUI();
+
+            if (N === 100) {
+                showToast('Мега-карта 100×100! Збільшуйте двома пальцями або коліщатком.');
+            }
+        }
+
+        // --- КАМЕРА ТА МАСШТАБУВАННЯ ---
+        function resetCameraView() {
+            const N = config.gridSize;
+            const rect = wrapper.getBoundingClientRect();
+            const isSmallScreen = rect.width < 640;
+            const paddingX = isSmallScreen ? 28 : 56;
+            const paddingY = isSmallScreen ? 68 : 64; // Урахування нижньої плаваючої панелі
+            const gridSpan = (N - 1) * state.cellSize;
+
+            state.targetOffsetX = null;
+            state.targetOffsetY = null;
+
+            if (N <= 20) {
+                const fitScaleX = (rect.width - paddingX * 2) / gridSpan;
+                const fitScaleY = (rect.height - paddingY * 2) / gridSpan;
+                state.scale = Math.max(0.32, Math.min(1.65, Math.min(fitScaleX, fitScaleY)));
+                state.minScale = Math.min(0.25, state.scale * 0.5);
+                state.maxScale = 3.2;
+                state.offsetX = (rect.width - gridSpan * state.scale) / 2;
+                state.offsetY = (rect.height - gridSpan * state.scale) / 2 - (isSmallScreen ? 12 : 0);
+            } else {
+                // Для 100x100 ставимо комфортний масштаб для пальців
+                state.scale = isSmallScreen ? 0.95 : 0.9;
+                state.minScale = 0.12;
+                state.maxScale = 3.0;
+                state.offsetX = 36;
+                state.offsetY = 36;
+            }
+            updateZoomLabel();
+        }
+
+        function focusOnLastMove() {
+            if (!state.lastLine) {
+                resetCameraView();
+                return;
+            }
+            const rect = wrapper.getBoundingClientRect();
+            const step = state.cellSize * state.scale;
+            const lx = state.lastLine.c * step + (state.lastLine.type === 'h' ? step * 0.5 : 0);
+            const ly = state.lastLine.r * step + (state.lastLine.type === 'v' ? step * 0.5 : 0);
+
+            state.targetOffsetX = rect.width / 2 - lx;
+            state.targetOffsetY = rect.height / 2 - ly - 16;
+        }
+
+        function updateZoomLabel() {
+            document.getElementById('zoom-level-text').textContent = `${Math.round(state.scale * 100)}%`;
+        }
+
+        function zoomAt(factor, centerX, centerY) {
+            state.targetOffsetX = null;
+            state.targetOffsetY = null;
+            const newScale = Math.max(state.minScale, Math.min(state.maxScale, state.scale * factor));
+            const actualFactor = newScale / state.scale;
+            state.offsetX = centerX - (centerX - state.offsetX) * actualFactor;
+            state.offsetY = centerY - (centerY - state.offsetY) * actualFactor;
+            state.scale = newScale;
+            updateZoomLabel();
+        }
+
+        // --- КУБИК ТА ХОДИ ---
+        function rollDice() {
+            if (state.phase !== 'roll') return;
+            state.phase = 'rolling';
+            btnRoll.disabled = true;
+            btnRoll.classList.add('opacity-50', 'pointer-events-none');
+            elDiceVisual.classList.add('rolling');
+            elMovesLeft.textContent = 'Кидаємо...';
+            sfx.playDice();
+
+            let ticks = 0;
+            const interval = setInterval(() => {
+                setDiceFace(Math.floor(Math.random() * 6) + 1);
+                ticks++;
+                if (ticks >= 7) {
+                    clearInterval(interval);
+                    elDiceVisual.classList.remove('rolling');
+
+                    const rolled = Math.floor(Math.random() * 6) + 1;
+                    const remainingLines = state.totalLines - state.drawnLinesCount;
+                    state.diceValue = rolled;
+                    state.movesLeft = Math.min(rolled, remainingLines);
+                    setDiceFace(rolled);
+                    state.phase = 'draw';
+                    updateUI();
+
+                    if (state.turn === 'ai') {
+                        setTimeout(runAITurnStep, 400);
+                    }
+                }
+            }, 55);
+        }
+
+        function getHLine(r, c) {
+            return state.hLines[r * (config.gridSize - 1) + c];
+        }
+        function setHLine(r, c, val) {
+            state.hLines[r * (config.gridSize - 1) + c] = val;
+        }
+        function getVLine(r, c) {
+            return state.vLines[r * config.gridSize + c];
+        }
+        function setVLine(r, c, val) {
+            state.vLines[r * config.gridSize + c] = val;
+        }
+
+        function countBoxSides(r, c) {
+            let count = 0;
+            if (getHLine(r, c) !== 0) count++;
+            if (getHLine(r + 1, c) !== 0) count++;
+            if (getVLine(r, c) !== 0) count++;
+            if (getVLine(r, c + 1) !== 0) count++;
+            return count;
+        }
+
+        function placeLine(type, r, c, player) {
+            const N = config.gridSize;
+            if (type === 'h') {
+                if (r < 0 || r >= N || c < 0 || c >= N - 1 || getHLine(r, c) !== 0) return false;
+            } else {
+                if (r < 0 || r >= N - 1 || c < 0 || c >= N || getVLine(r, c) !== 0) return false;
+            }
+
+            const symbol = player === 'human' ? config.humanSymbol : config.aiSymbol;
+            const ownerCode = symbol === 'heart' ? 1 : 2;
+
+            if (type === 'h') setHLine(r, c, ownerCode);
+            else setVLine(r, c, ownerCode);
+
+            state.drawnLinesCount++;
+            state.lastLine = { type, r, c };
+
+            // На великій карті 100x100 плавно підводимо камеру, якщо хід ШІ відбувся за межами екрана
+            if (player === 'ai' && N >= 50) {
+                const rect = wrapper.getBoundingClientRect();
+                const step = state.cellSize * state.scale;
+                const sx = state.offsetX + c * step;
+                const sy = state.offsetY + r * step;
+                if (sx < 30 || sx > rect.width - 30 || sy < 30 || sy > rect.height - 70) {
+                    focusOnLastMove();
+                }
+            }
+
+            // Перевіряємо суміжні квадрати
+            let capturedCount = 0;
+            const candidateBoxes = [];
+            if (type === 'h') {
+                if (r > 0) candidateBoxes.push([r - 1, c]);
+                if (r < N - 1) candidateBoxes.push([r, c]);
+            } else {
+                if (c > 0) candidateBoxes.push([r, c - 1]);
+                if (c < N - 1) candidateBoxes.push([r, c]);
+            }
+
+            for (const [br, bc] of candidateBoxes) {
+                const bIdx = br * (N - 1) + bc;
+                if (state.boxes[bIdx] === 0 && countBoxSides(br, bc) === 4) {
+                    state.boxes[bIdx] = ownerCode;
+                    state.boxAnim[bIdx] = 0.05;
+                    state.activeAnims.add(bIdx);
+                    state.scores[symbol]++;
+                    capturedCount++;
+                }
+            }
+
+            if (capturedCount > 0) {
+                sfx.playCapture(player === 'human');
+            } else {
+                sfx.playLine(player === 'human');
+            }
+
+            state.movesLeft--;
+            if (config.bonusTurn && capturedCount > 0) {
+                const remainingOnBoard = state.totalLines - state.drawnLinesCount;
+                const bonus = Math.min(capturedCount, remainingOnBoard - state.movesLeft);
+                if (bonus > 0) {
+                    state.movesLeft += bonus;
+                    if (player === 'human') {
+                        showToast(`✨ Бонус +${bonus} лінія за квадрат!`);
+                    }
+                }
+            }
+
+            if (state.drawnLinesCount >= state.totalLines) {
+                state.phase = 'gameover';
+                state.movesLeft = 0;
+                updateUI();
+                setTimeout(showGameOver, 550);
+                return true;
+            }
+
+            if (state.movesLeft <= 0) {
+                state.turn = state.turn === 'human' ? 'ai' : 'human';
+                state.phase = 'roll';
+                updateUI();
+                if (state.turn === 'ai') {
+                    setTimeout(rollDice, 480);
+                }
+            } else {
+                updateUI();
+            }
+
+            return true;
+        }
+
+        // --- ШТУЧНИЙ ІНТЕЛЕКТ ---
+        function runAITurnStep() {
+            if (state.turn !== 'ai' || state.phase !== 'draw' || state.movesLeft <= 0) return;
+
+            const move = chooseAIMove();
+            if (!move) return;
+
+            placeLine(move.type, move.r, move.c, 'ai');
+
+            if (state.turn === 'ai' && state.phase === 'draw' && state.movesLeft > 0) {
+                const delay = config.gridSize >= 50 ? 180 : 320;
+                setTimeout(runAITurnStep, delay);
+            }
+        }
+
+        function chooseAIMove() {
+            const N = config.gridSize;
+            const scoringMoves = [];
+            const safeMoves = [];
+            const riskyMoves = [];
+
+            let rMin = 0, rMax = N - 1, cMin = 0, cMax = N - 1;
+            if (N >= 50 && state.drawnLinesCount > 0) {
+                rMin = N; rMax = 0; cMin = N; cMax = 0;
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N - 1; c++) {
+                        if (getHLine(r, c) !== 0) {
+                            if (r < rMin) rMin = r;
+                            if (r > rMax) rMax = r;
+                            if (c < cMin) cMin = c;
+                            if (c + 1 > cMax) cMax = c + 1;
+                        }
+                    }
+                }
+                for (let r = 0; r < N - 1; r++) {
+                    for (let c = 0; c < N; c++) {
+                        if (getVLine(r, c) !== 0) {
+                            if (r < rMin) rMin = r;
+                            if (r + 1 > rMax) rMax = r;
+                            if (c < cMin) cMin = c;
+                            if (c > cMax) cMax = c;
+                        }
+                    }
+                }
+                if (rMin <= rMax) {
+                    rMin = Math.max(0, rMin - 4);
+                    rMax = Math.min(N - 1, rMax + 4);
+                    cMin = Math.max(0, cMin - 4);
+                    cMax = Math.min(N - 1, cMax + 4);
+                } else {
+                    rMin = 0; rMax = 10; cMin = 0; cMax = 10;
+                }
+            }
+
+            const evaluateEdge = (type, r, c) => {
+                let completesBox = false;
+                let createsThirdSide = false;
+
+                if (type === 'h') {
+                    if (r > 0) {
+                        const s = countBoxSides(r - 1, c);
+                        if (s === 3) completesBox = true;
+                        else if (s === 2) createsThirdSide = true;
+                    }
+                    if (r < N - 1) {
+                        const s = countBoxSides(r, c);
+                        if (s === 3) completesBox = true;
+                        else if (s === 2) createsThirdSide = true;
+                    }
+                } else {
+                    if (c > 0) {
+                        const s = countBoxSides(r, c - 1);
+                        if (s === 3) completesBox = true;
+                        else if (s === 2) createsThirdSide = true;
+                    }
+                    if (c < N - 1) {
+                        const s = countBoxSides(r, c);
+                        if (s === 3) completesBox = true;
+                        else if (s === 2) createsThirdSide = true;
+                    }
+                }
+
+                const edge = { type, r, c };
+                if (completesBox) scoringMoves.push(edge);
+                else if (!createsThirdSide) safeMoves.push(edge);
+                else riskyMoves.push(edge);
+            };
+
+            for (let r = rMin; r <= rMax; r++) {
+                for (let c = cMin; c <= Math.min(N - 2, cMax); c++) {
+                    if (getHLine(r, c) === 0) evaluateEdge('h', r, c);
+                }
+            }
+            for (let r = rMin; r <= Math.min(N - 2, rMax); r++) {
+                for (let c = cMin; c <= cMax; c++) {
+                    if (getVLine(r, c) === 0) evaluateEdge('v', r, c);
+                }
+            }
+
+            if (scoringMoves.length === 0 && safeMoves.length === 0 && riskyMoves.length === 0) {
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N - 1; c++) {
+                        if (getHLine(r, c) === 0) return { type: 'h', r, c };
+                    }
+                }
+                for (let r = 0; r < N - 1; r++) {
+                    for (let c = 0; c < N; c++) {
+                        if (getVLine(r, c) === 0) return { type: 'v', r, c };
+                    }
+                }
+            }
+
+            const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+            if (config.aiDifficulty === 'easy') {
+                return pickRandom([...scoringMoves, ...safeMoves, ...riskyMoves]);
+            }
+
+            if (config.aiDifficulty === 'medium') {
+                if (scoringMoves.length > 0 && Math.random() < 0.85) return pickRandom(scoringMoves);
+                if (safeMoves.length > 0 && Math.random() < 0.75) return pickRandom(safeMoves);
+                return pickRandom([...safeMoves, ...riskyMoves, ...scoringMoves]);
+            }
+
+            if (scoringMoves.length > 0) return pickRandom(scoringMoves);
+            if (safeMoves.length > 0) return pickRandom(safeMoves);
+            return pickRandom(riskyMoves);
+        }
+
+        // --- ОНОВЛЕННЯ ІНТЕРФЕЙСУ ---
+        function updateUI() {
+            elScoreHeart.textContent = state.scores.heart;
+            elScoreCross.textContent = state.scores.cross;
+
+            const activeSymbol = state.turn === 'human' ? config.humanSymbol : config.aiSymbol;
+
+            if (activeSymbol === 'heart') {
+                elCardHeart.classList.add('border-[#ff2a5f]', 'glow-red', 'scale-[1.02]');
+                elCardHeart.classList.remove('border-[#ff2a5f]/35', 'opacity-70');
+                elCardCross.classList.remove('border-[#00d2ff]', 'glow-blue', 'scale-[1.02]');
+                elCardCross.classList.add('border-[#00d2ff]/35', 'opacity-70');
+            } else {
+                elCardCross.classList.add('border-[#00d2ff]', 'glow-blue', 'scale-[1.02]');
+                elCardCross.classList.remove('border-[#00d2ff]/35', 'opacity-70');
+                elCardHeart.classList.remove('border-[#ff2a5f]', 'glow-red', 'scale-[1.02]');
+                elCardHeart.classList.add('border-[#ff2a5f]/35', 'opacity-70');
+            }
+
+            if (state.turn === 'human') {
+                elTurnBadge.textContent = 'Ваш хід';
+                elTurnBadge.className = `text-[11px] sm:text-xs font-bold uppercase tracking-wider ${config.humanSymbol === 'heart' ? 'text-[#ff2a5f]' : 'text-[#00d2ff]'}`;
+            } else {
+                elTurnBadge.textContent = "Хід комп'ютера";
+                elTurnBadge.className = `text-[11px] sm:text-xs font-bold uppercase tracking-wider ${config.aiSymbol === 'heart' ? 'text-[#ff2a5f]' : 'text-[#00d2ff]'}`;
+            }
+
+            if (state.phase === 'roll') {
+                if (state.turn === 'human') {
+                    elMovesLeft.textContent = 'Киньте кубик';
+                    btnRoll.disabled = false;
+                    btnRoll.classList.remove('opacity-40', 'pointer-events-none');
+                } else {
+                    elMovesLeft.textContent = 'ШІ кидає кубик...';
+                    btnRoll.disabled = true;
+                    btnRoll.classList.add('opacity-40', 'pointer-events-none');
+                }
+            } else if (state.phase === 'draw') {
+                elMovesLeft.innerHTML = `Ліній: <span class="text-amber-400 text-sm sm:text-base font-extrabold">${state.movesLeft}</span>`;
+                btnRoll.disabled = true;
+                btnRoll.classList.add('opacity-40', 'pointer-events-none');
+            } else if (state.phase === 'gameover') {
+                elMovesLeft.textContent = 'Гру завершено!';
+                btnRoll.disabled = true;
+                btnRoll.classList.add('opacity-40', 'pointer-events-none');
+            }
+        }
+
+        function showGameOver() {
+            sfx.playWin();
+            const hScore = state.scores.heart;
+            const cScore = state.scores.cross;
+            const humanScore = state.scores[config.humanSymbol];
+            const aiScore = state.scores[config.aiSymbol];
+
+            document.getElementById('final-score-heart').textContent = hScore;
+            document.getElementById('final-score-cross').textContent = cScore;
+
+            const emojiEl = document.getElementById('winner-emoji');
+            const titleEl = document.getElementById('winner-title');
+            const subEl = document.getElementById('winner-subtitle');
+
+            if (humanScore > aiScore) {
+                emojiEl.textContent = '🏆';
+                titleEl.textContent = 'Перемога за вами!';
+                subEl.textContent = `Ви захопили ${humanScore} квадратів проти ${aiScore} у комп'ютера.`;
+            } else if (aiScore > humanScore) {
+                emojiEl.textContent = '🤖';
+                titleEl.textContent = "Переміг комп'ютер!";
+                subEl.textContent = `ШІ зібрав ${aiScore} квадратів проти ваших ${humanScore}. Спробуйте реванш!`;
+            } else {
+                emojiEl.textContent = '🤝';
+                titleEl.textContent = 'Бойова нічия!';
+                subEl.textContent = `Обидва гравці зібрали по ${humanScore} квадратів.`;
+            }
+
+            modalGameover.classList.remove('hidden');
+        }
+
+        // --- РЕНДЕРИНГ НА CANVAS ---
+        function resizeCanvas() {
+            const rect = wrapper.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        function drawHeart(cx, cy, size, alpha = 1) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.scale(alpha, alpha);
+            ctx.strokeStyle = COLORS.heart;
+            ctx.lineWidth = Math.max(2, 2.8 * state.scale);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (state.scale > 0.35) {
+                ctx.shadowColor = COLORS.heartGlow;
+                ctx.shadowBlur = 10 * state.scale;
+            }
+
+            const s = size * 0.34;
+            ctx.beginPath();
+            ctx.moveTo(0, s * 0.85);
+            ctx.bezierCurveTo(-s * 1.45, -s * 0.15, -s * 0.85, -s * 1.25, 0, -s * 0.45);
+            ctx.bezierCurveTo(s * 0.85, -s * 1.25, s * 1.45, -s * 0.15, 0, s * 0.85);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawCross(cx, cy, size, alpha = 1) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.scale(alpha, alpha);
+            ctx.strokeStyle = COLORS.cross;
+            ctx.lineWidth = Math.max(2, 3.0 * state.scale);
+            ctx.lineCap = 'round';
+
+            if (state.scale > 0.35) {
+                ctx.shadowColor = COLORS.crossGlow;
+                ctx.shadowBlur = 10 * state.scale;
+            }
+
+            const s = size * 0.27;
+            ctx.beginPath();
+            ctx.moveTo(-s, -s);
+            ctx.lineTo(s, s);
+            ctx.moveTo(s, -s);
+            ctx.lineTo(-s, s);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function renderLoop() {
+            const rect = wrapper.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+
+            // Плавна інерція камери при фокусі на останній хід
+            if (state.targetOffsetX !== null && state.targetOffsetY !== null) {
+                state.offsetX += (state.targetOffsetX - state.offsetX) * 0.16;
+                state.offsetY += (state.targetOffsetY - state.offsetY) * 0.16;
+                if (Math.hypot(state.targetOffsetX - state.offsetX, state.targetOffsetY - state.offsetY) < 0.8) {
+                    state.offsetX = state.targetOffsetX;
+                    state.offsetY = state.targetOffsetY;
+                    state.targetOffsetX = null;
+                    state.targetOffsetY = null;
+                }
+            }
+
+            ctx.fillStyle = COLORS.bg;
+            ctx.fillRect(0, 0, width, height);
+
+            if (!state.hLines) {
+                requestAnimationFrame(renderLoop);
+                return;
+            }
+
+            if (state.activeAnims.size > 0) {
+                for (const bIdx of state.activeAnims) {
+                    state.boxAnim[bIdx] += 0.08;
+                    if (state.boxAnim[bIdx] >= 1) {
+                        state.boxAnim[bIdx] = 1;
+                        state.activeAnims.delete(bIdx);
+                    }
+                }
+            }
+
+            const N = config.gridSize;
+            const step = state.cellSize * state.scale;
+
+            // Viewport Culling (відмальовуємо лише те, що бачить гравець на екрані)
+            const cStart = Math.max(0, Math.floor(-state.offsetX / step) - 1);
+            const cEnd = Math.min(N - 1, Math.ceil((width - state.offsetX) / step) + 1);
+            const rStart = Math.max(0, Math.floor(-state.offsetY / step) - 1);
+            const rEnd = Math.min(N - 1, Math.ceil((height - state.offsetY) / step) + 1);
+
+            // 1. Тонка допоміжна сітка
+            if (step >= 14) {
+                ctx.strokeStyle = COLORS.gridHint;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let r = rStart; r <= rEnd; r++) {
+                    const y = state.offsetY + r * step;
+                    ctx.moveTo(state.offsetX + cStart * step, y);
+                    ctx.lineTo(state.offsetX + cEnd * step, y);
+                }
+                for (let c = cStart; c <= cEnd; c++) {
+                    const x = state.offsetX + c * step;
+                    ctx.moveTo(x, state.offsetY + rStart * step);
+                    ctx.lineTo(x, state.offsetY + rEnd * step);
+                }
+                ctx.stroke();
+            }
+
+            // 2. Захоплені квадрати
+            const boxRStart = Math.max(0, rStart);
+            const boxREnd = Math.min(N - 2, rEnd);
+            const boxCStart = Math.max(0, cStart);
+            const boxCEnd = Math.min(N - 2, cEnd);
+
+            for (let r = boxRStart; r <= boxREnd; r++) {
+                for (let c = boxCStart; c <= boxCEnd; c++) {
+                    const bIdx = r * (N - 1) + c;
+                    const owner = state.boxes[bIdx];
+                    if (owner !== 0) {
+                        const x = state.offsetX + c * step;
+                        const y = state.offsetY + r * step;
+                        const animScale = state.boxAnim[bIdx] || 1;
+
+                        ctx.fillStyle = owner === 1 ? COLORS.heartFill : COLORS.crossFill;
+                        ctx.fillRect(x + 2, y + 2, step - 4, step - 4);
+
+                        if (step >= 10) {
+                            const cx = x + step / 2;
+                            const cy = y + step / 2;
+                            if (owner === 1) drawHeart(cx, cy, step, animScale);
+                            else drawCross(cx, cy, step, animScale);
+                        }
+                    }
+                }
+            }
+
+            // 3. Підсвічування при наведенні мишею або дотику пальцем на iPhone/iPad
+            const previewEdge = state.touchPreviewEdge || state.hoveredEdge;
+            if (
+                previewEdge &&
+                state.turn === 'human' &&
+                state.phase === 'draw' &&
+                !state.panMode &&
+                !state.spacePressed &&
+                !state.dragMoved
+            ) {
+                const { type, r, c } = previewEdge;
+                const isFree = type === 'h' ? getHLine(r, c) === 0 : getVLine(r, c) === 0;
+                if (isFree) {
+                    const x1 = state.offsetX + c * step;
+                    const y1 = state.offsetY + r * step;
+                    const x2 = type === 'h' ? x1 + step : x1;
+                    const y2 = type === 'v' ? y1 + step : y1;
+
+                    ctx.save();
+                    ctx.strokeStyle = config.humanSymbol === 'heart' ? 'rgba(255, 42, 95, 0.7)' : 'rgba(0, 210, 255, 0.7)';
+                    ctx.lineWidth = Math.max(4, 6 * state.scale);
+                    ctx.lineCap = 'round';
+                    ctx.setLineDash([6 * state.scale, 6 * state.scale]);
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            // 4. Проведені горизонтальні та вертикальні лінії
+            const lineWidth = Math.max(2, 4.2 * state.scale);
+            const dotGap = Math.min(step * 0.16, 7 * state.scale);
+
+            ctx.lineCap = 'round';
+            ctx.lineWidth = lineWidth;
+
+            for (let r = rStart; r <= rEnd; r++) {
+                const y = state.offsetY + r * step;
+                for (let c = boxCStart; c <= boxCEnd; c++) {
+                    const owner = getHLine(r, c);
+                    if (owner !== 0) {
+                        const x1 = state.offsetX + c * step + dotGap;
+                        const x2 = state.offsetX + (c + 1) * step - dotGap;
+                        const isLast = state.lastLine && state.lastLine.type === 'h' && state.lastLine.r === r && state.lastLine.c === c;
+
+                        ctx.strokeStyle = owner === 1 ? COLORS.heart : COLORS.cross;
+                        if (isLast && step > 12) {
+                            ctx.save();
+                            ctx.shadowColor = owner === 1 ? COLORS.heart : COLORS.cross;
+                            ctx.shadowBlur = 16;
+                            ctx.lineWidth = lineWidth * 1.25;
+                            ctx.beginPath();
+                            ctx.moveTo(x1, y);
+                            ctx.lineTo(x2, y);
+                            ctx.stroke();
+                            ctx.restore();
+                        } else {
+                            ctx.beginPath();
+                            ctx.moveTo(x1, y);
+                            ctx.lineTo(x2, y);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            for (let r = boxRStart; r <= boxREnd; r++) {
+                for (let c = cStart; c <= cEnd; c++) {
+                    const owner = getVLine(r, c);
+                    if (owner !== 0) {
+                        const x = state.offsetX + c * step;
+                        const y1 = state.offsetY + r * step + dotGap;
+                        const y2 = state.offsetY + (r + 1) * step - dotGap;
+                        const isLast = state.lastLine && state.lastLine.type === 'v' && state.lastLine.r === r && state.lastLine.c === c;
+
+                        ctx.strokeStyle = owner === 1 ? COLORS.heart : COLORS.cross;
+                        if (isLast && step > 12) {
+                            ctx.save();
+                            ctx.shadowColor = owner === 1 ? COLORS.heart : COLORS.cross;
+                            ctx.shadowBlur = 16;
+                            ctx.lineWidth = lineWidth * 1.25;
+                            ctx.beginPath();
+                            ctx.moveTo(x, y1);
+                            ctx.lineTo(x, y2);
+                            ctx.stroke();
+                            ctx.restore();
+                        } else {
+                            ctx.beginPath();
+                            ctx.moveTo(x, y1);
+                            ctx.lineTo(x, y2);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            // 5. Точки сітки
+            if (step >= 6) {
+                const dotRadius = Math.max(1.5, Math.min(4.4, 3.6 * state.scale));
+                ctx.fillStyle = COLORS.dot;
+                ctx.beginPath();
+                for (let r = rStart; r <= rEnd; r++) {
+                    const y = state.offsetY + r * step;
+                    for (let c = cStart; c <= cEnd; c++) {
+                        const x = state.offsetX + c * step;
+                        ctx.moveTo(x + dotRadius, y);
+                        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+                    }
+                }
+                ctx.fill();
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        // --- ПОШУК НАЙБЛИЖЧОЇ ЛІНІЇ (Збільшена чутливість для пальців на iOS) ---
+        function getClosestEdge(clientX, clientY, isTouch = false) {
+            const rect = canvas.getBoundingClientRect();
+            const px = clientX - rect.left;
+            const py = clientY - rect.top;
+
+            const step = state.cellSize * state.scale;
+            const gx = (px - state.offsetX) / step;
+            const gy = (py - state.offsetY) / step;
+
+            const N = config.gridSize;
+            const pad = isTouch ? 0.45 : 0.35;
+            if (gx < -pad || gx > N - 1 + pad || gy < -pad || gy > N - 1 + pad) {
+                return null;
+            }
+
+            const nearestR = Math.round(gy);
+            const nearestC = Math.round(gx);
+            const distToRow = Math.abs(gy - nearestR);
+            const distToCol = Math.abs(gx - nearestC);
+
+            // На сенсорному екрані робимо радіус захоплення більшим (0.44 клітинки), щоб пальцем було легко влучити
+            const threshold = isTouch ? 0.44 : 0.34;
+
+            if (distToRow < distToCol && distToRow < threshold) {
+                const c = Math.floor(gx);
+                if (nearestR >= 0 && nearestR < N && c >= 0 && c < N - 1) {
+                    return { type: 'h', r: nearestR, c };
+                }
+            } else if (distToCol <= distToRow && distToCol < threshold) {
+                const r = Math.floor(gy);
+                if (r >= 0 && r < N - 1 && nearestC >= 0 && nearestC < N) {
+                    return { type: 'v', r, c: nearestC };
+                }
+            }
+
+            return null;
+        }
+
+        // --- ПОДІЇ МИШІ ТА МУЛЬТИТАЧУ (iPhone / iPad Safari) ---
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (state.isTouchDevice) return;
+            state.targetOffsetX = null;
+            state.targetOffsetY = null;
+            state.isDragging = true;
+            state.dragStartX = e.clientX - state.offsetX;
+            state.dragStartY = e.clientY - state.offsetY;
+            state.dragMoved = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (state.isTouchDevice) return;
+            if (state.isDragging) {
+                const newX = e.clientX - state.dragStartX;
+                const newY = e.clientY - state.dragStartY;
+                if (Math.hypot(newX - state.offsetX, newY - state.offsetY) > 6) {
+                    state.dragMoved = true;
+                }
+                if (state.dragMoved) {
+                    state.offsetX = newX;
+                    state.offsetY = newY;
+                    state.hoveredEdge = null;
+                    return;
+                }
+            }
+
+            state.hoveredEdge = getClosestEdge(e.clientX, e.clientY, false);
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (state.isTouchDevice) return;
+            const wasMoved = state.dragMoved;
+            state.isDragging = false;
+            state.dragMoved = false;
+
+            if (!wasMoved && e.button === 0 && !state.panMode && !state.spacePressed && e.target === canvas) {
+                handleBoardTap(e.clientX, e.clientY, false);
+            }
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+            const factor = e.deltaY < 0 ? 1.14 : 0.88;
+            zoomAt(factor, cx, cy);
+        }, { passive: false });
+
+        // Сенсорне керування iPhone / iPad (1 палець: тап або перетягування, 2 пальці: Pinch-to-Zoom + перетягування)
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            state.isTouchDevice = true;
+            state.targetOffsetX = null;
+            state.targetOffsetY = null;
+
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                state.isDragging = true;
+                state.dragStartX = t.clientX - state.offsetX;
+                state.dragStartY = t.clientY - state.offsetY;
+                state.dragMoved = false;
+                state.touchPreviewEdge = getClosestEdge(t.clientX, t.clientY, true);
+            } else if (e.touches.length === 2) {
+                state.isDragging = false;
+                state.dragMoved = true;
+                state.touchPreviewEdge = null;
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                state.lastPinchDist = Math.hypot(dx, dy);
+                state.lastPinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                state.lastPinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && state.isDragging) {
+                const t = e.touches[0];
+                const newX = t.clientX - state.dragStartX;
+                const newY = t.clientY - state.dragStartY;
+                // Поріг 10px для пальця, щоб легке тремтіння при натисканні не скасовувало лінію
+                if (Math.hypot(newX - state.offsetX, newY - state.offsetY) > 10) {
+                    state.dragMoved = true;
+                    state.touchPreviewEdge = null;
+                }
+                if (state.dragMoved) {
+                    state.offsetX = newX;
+                    state.offsetY = newY;
+                } else {
+                    state.touchPreviewEdge = getClosestEdge(t.clientX, t.clientY, true);
+                }
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+                // Одночасне перетягування двома пальцями
+                state.offsetX += midX - state.lastPinchMidX;
+                state.offsetY += midY - state.lastPinchMidY;
+
+                // Масштабування щипком (Pinch-to-Zoom)
+                if (state.lastPinchDist > 10 && dist > 10) {
+                    const rect = canvas.getBoundingClientRect();
+                    zoomAt(dist / state.lastPinchDist, midX - rect.left, midY - rect.top);
+                }
+
+                state.lastPinchDist = dist;
+                state.lastPinchMidX = midX;
+                state.lastPinchMidY = midY;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 0) {
+                if (!state.dragMoved && !state.panMode && e.changedTouches.length === 1) {
+                    const t = e.changedTouches[0];
+                    handleBoardTap(t.clientX, t.clientY, true);
+                }
+                state.isDragging = false;
+                state.dragMoved = false;
+                state.lastPinchDist = 0;
+                state.touchPreviewEdge = null;
+            } else if (e.touches.length === 1) {
+                // Якщо відпустили один палець з двох, оновлюємо точку відліку, щоб камера не стрибала
+                const t = e.touches[0];
+                state.isDragging = true;
+                state.dragStartX = t.clientX - state.offsetX;
+                state.dragStartY = t.clientY - state.offsetY;
+                state.dragMoved = true;
+            }
+        }, { passive: false });
+
+        function handleBoardTap(clientX, clientY, isTouch) {
+            if (!state.isPlaying || state.turn !== 'human') return;
+
+            if (state.phase === 'roll') {
+                showToast('🎲 Спочатку натисніть «Кинути»!');
+                return;
+            }
+
+            if (state.phase !== 'draw' || state.movesLeft <= 0) return;
+
+            const edge = getClosestEdge(clientX, clientY, isTouch);
+            if (!edge) return;
+
+            placeLine(edge.type, edge.r, edge.c, 'human');
+        }
+
+        // Клавіша Пробіл на ПК для перетягування
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.repeat) {
+                state.spacePressed = true;
+                canvas.classList.add('pan-mode');
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                state.spacePressed = false;
+                if (!state.panMode) canvas.classList.remove('pan-mode');
+            }
+        });
+
+        // --- ОБРОБНИКИ КНОПОК ІНТЕРФЕЙСУ ---
+        btnRoll.addEventListener('click', () => {
+            if (state.turn === 'human' && state.phase === 'roll') {
+                rollDice();
+            }
+        });
+
+        const btnSound = document.getElementById('btn-sound');
+        btnSound.addEventListener('click', () => {
+            sfx.enabled = !sfx.enabled;
+            btnSound.textContent = sfx.enabled ? '🔊' : '🔇';
+            showToast(sfx.enabled ? 'Звук увімкнено' : 'Звук вимкнено');
+        });
+
+        document.getElementById('btn-zoom-in').addEventListener('click', () => {
+            const rect = wrapper.getBoundingClientRect();
+            zoomAt(1.25, rect.width / 2, rect.height / 2);
+        });
+        document.getElementById('btn-zoom-out').addEventListener('click', () => {
+            const rect = wrapper.getBoundingClientRect();
+            zoomAt(0.8, rect.width / 2, rect.height / 2);
+        });
+        document.getElementById('btn-reset-view').addEventListener('click', () => {
+            resetCameraView();
+        });
+        document.getElementById('btn-focus-last').addEventListener('click', () => {
+            if (state.lastLine) {
+                focusOnLastMove();
+            } else {
+                showToast('Ще не проведено жодної лінії');
+            }
+        });
+
+        const btnTogglePan = document.getElementById('btn-toggle-pan');
+        btnTogglePan.addEventListener('click', () => {
+            state.panMode = !state.panMode;
+            const icon = document.getElementById('pan-icon');
+            const text = document.getElementById('pan-text');
+            if (state.panMode) {
+                icon.textContent = '✋';
+                text.textContent = 'Огляд';
+                btnTogglePan.classList.add('border-purple-500', 'bg-purple-500/20');
+                canvas.classList.add('pan-mode');
+                showToast('Режим огляду: рухайте поле пальцем або мишею');
+            } else {
+                icon.textContent = '✏️';
+                text.textContent = 'Лінії';
+                btnTogglePan.classList.remove('border-purple-500', 'bg-purple-500/20');
+                canvas.classList.remove('pan-mode');
+                showToast('Режим малювання ліній');
+            }
+        });
+
+        // Налаштування у модальному вікні
+        document.querySelectorAll('.size-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.size-btn').forEach(b => {
+                    b.classList.remove('active', 'border-2', 'border-purple-500', 'bg-purple-500/15');
+                    b.classList.add('border', 'border-slate-700', 'bg-slate-900/70');
+                });
+                btn.classList.remove('border', 'border-slate-700', 'bg-slate-900/70');
+                btn.classList.add('active', 'border-2', 'border-purple-500', 'bg-purple-500/15');
+                config.gridSize = parseInt(btn.dataset.size, 10);
+            });
+        });
+
+        document.querySelectorAll('.symbol-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.symbol-btn').forEach(b => {
+                    b.classList.remove('active', 'border-2', 'border-[#ff2a5f]', 'bg-[#ff2a5f]/15', 'border-[#00d2ff]', 'bg-[#00d2ff]/15');
+                    b.classList.add('border', 'border-slate-700', 'bg-slate-900/70');
+                });
+                const sym = btn.dataset.symbol;
+                config.humanSymbol = sym;
+                btn.classList.remove('border', 'border-slate-700', 'bg-slate-900/70');
+                if (sym === 'heart') {
+                    btn.classList.add('active', 'border-2', 'border-[#ff2a5f]', 'bg-[#ff2a5f]/15');
+                } else {
+                    btn.classList.add('active', 'border-2', 'border-[#00d2ff]', 'bg-[#00d2ff]/15');
+                }
+            });
+        });
+
+        document.querySelectorAll('.ai-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.ai-btn').forEach(b => {
+                    b.classList.remove('active', 'border-2', 'border-purple-500', 'bg-purple-500/15', 'text-white', 'font-bold');
+                    b.classList.add('border', 'border-slate-700', 'bg-slate-900/70', 'text-slate-300', 'font-semibold');
+                });
+                btn.classList.remove('border', 'border-slate-700', 'bg-slate-900/70', 'text-slate-300', 'font-semibold');
+                btn.classList.add('active', 'border-2', 'border-purple-500', 'bg-purple-500/15', 'text-white', 'font-bold');
+                config.aiDifficulty = btn.dataset.ai;
+            });
+        });
+
+        document.getElementById('toggle-bonus').addEventListener('change', (e) => {
+            config.bonusTurn = e.target.checked;
+        });
+
+        document.getElementById('btn-start-game').addEventListener('click', () => {
+            modalSettings.classList.add('hidden');
+            document.getElementById('btn-close-settings').classList.remove('hidden');
+            initGame();
+        });
+
+        document.getElementById('btn-settings').addEventListener('click', () => {
+            modalSettings.classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-settings').addEventListener('click', () => {
+            modalSettings.classList.add('hidden');
+        });
+
+        document.getElementById('btn-rematch').addEventListener('click', () => {
+            modalGameover.classList.add('hidden');
+            initGame();
+        });
+
+        document.getElementById('btn-gameover-settings').addEventListener('click', () => {
+            modalGameover.classList.add('hidden');
+            modalSettings.classList.remove('hidden');
+        });
+
+        // Адаптація при зміні розміру вікна або повороті екрана iPhone/iPad
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                resizeCanvas();
+                if (config.gridSize <= 20) resetCameraView();
+            }, 150);
+        });
+
+        window.onload = function () {
+            resizeCanvas();
+            setDiceFace(5);
+            requestAnimationFrame(renderLoop);
+        };
+    </script>
+</body>
+</html>
