@@ -341,7 +341,7 @@
                         Середній
                     </button>
                     <button type="button" data-ai="smart" class="ai-btn min-h-[42px] py-2 px-2 rounded-xl border border-slate-700 bg-slate-900/70 text-xs sm:text-sm font-semibold text-slate-300 hover:border-slate-500 transition cursor-pointer">
-                        Складний
+                        Складний (Профі)
                     </button>
                 </div>
             </div>
@@ -964,386 +964,273 @@
                 return pickRandom([...safeMoves, ...riskyMoves, ...scoringMoves]);
             }
 
-            if (scoringMoves.length > 0) return pickRandom(scoringMoves);
-            if (safeMoves.length > 0) return pickRandom(safeMoves);
-            return pickRandom(riskyMoves);
+            // 'smart' — Професійний стратег з урахуванням кубика (multi-move) та теорії ланцюжків
+            return chooseProAIMove(scoringMoves, safeMoves, riskyMoves, rMin, rMax, cMin, cMax);
         }
 
-        // --- ОНОВЛЕННЯ ІНТЕРФЕЙСУ ---
-        function updateUI() {
-            elScoreHeart.textContent = state.scores.heart;
-            elScoreCross.textContent = state.scores.cross;
+        /**
+         * ПРОФЕСІЙНИЙ АЛГОРИТМ ШІ («Складний (Профі)»)
+         * 1. Багатокрокове планування в межах кидка кубика (Self-Setup Combos):
+         *    Якщо залишилось >= 2 ліній, ШІ може поставити 3-тю сторону квадрата і одразу закрити його наступною лінією.
+         * 2. Графовий аналіз ланцюжків (BFS по клітинках з 2 сторонами):
+         *    - Оцінює довжину ланцюжка, який відкривається при постановці 3-ї сторони.
+         *    - Використовує тактику Double-Cross (залишає 2 останні клітинки ланцюжка), якщо це змусить гравця відкрити наступний великий ланцюжок.
+         *    - При вимушеній жертві віддає найкоротший ланцюжок.
+         * 3. Позиційна евристика для безпечних ходів (контроль території, уникнення довгих коридорів).
+         */
+        function chooseProAIMove(scoringMoves, safeMoves, riskyMoves, rMin, rMax, cMin, cMax) {
+            const N = config.gridSize;
+            const movesLeft = state.movesLeft;
+            const bonusOn = config.bonusTurn;
 
-            const activeSymbol = state.turn === 'human' ? config.humanSymbol : config.aiSymbol;
-
-            if (activeSymbol === 'heart') {
-                elCardHeart.classList.add('border-[#ff2a5f]', 'glow-red', 'scale-[1.02]');
-                elCardHeart.classList.remove('border-[#ff2a5f]/35', 'opacity-70');
-                elCardCross.classList.remove('border-[#00d2ff]', 'glow-blue', 'scale-[1.02]');
-                elCardCross.classList.add('border-[#00d2ff]/35', 'opacity-70');
-            } else {
-                elCardCross.classList.add('border-[#00d2ff]', 'glow-blue', 'scale-[1.02]');
-                elCardCross.classList.remove('border-[#00d2ff]/35', 'opacity-70');
-                elCardHeart.classList.remove('border-[#ff2a5f]', 'glow-red', 'scale-[1.02]');
-                elCardHeart.classList.add('border-[#ff2a5f]/35', 'opacity-70');
-            }
-
-            if (state.turn === 'human') {
-                elTurnBadge.textContent = 'Ваш хід';
-                elTurnBadge.className = `text-[11px] sm:text-xs font-bold uppercase tracking-wider ${config.humanSymbol === 'heart' ? 'text-[#ff2a5f]' : 'text-[#00d2ff]'}`;
-            } else {
-                elTurnBadge.textContent = "Хід комп'ютера";
-                elTurnBadge.className = `text-[11px] sm:text-xs font-bold uppercase tracking-wider ${config.aiSymbol === 'heart' ? 'text-[#ff2a5f]' : 'text-[#00d2ff]'}`;
-            }
-
-            if (state.phase === 'roll') {
-                if (state.turn === 'human') {
-                    elMovesLeft.textContent = 'Киньте кубик';
-                    btnRoll.disabled = false;
-                    btnRoll.classList.remove('opacity-40', 'pointer-events-none');
+            // Допоміжна функція: сусідні клітинки для ребра
+            const getAdjBoxes = (edge) => {
+                const res = [];
+                if (edge.type === 'h') {
+                    if (edge.r > 0) res.push([edge.r - 1, edge.c]);
+                    if (edge.r < N - 1) res.push([edge.r, edge.c]);
                 } else {
-                    elMovesLeft.textContent = 'ШІ кидає кубик...';
-                    btnRoll.disabled = true;
-                    btnRoll.classList.add('opacity-40', 'pointer-events-none');
+                    if (edge.c > 0) res.push([edge.r, edge.c - 1]);
+                    if (edge.c < N - 1) res.push([edge.r, edge.c]);
                 }
-            } else if (state.phase === 'draw') {
-                elMovesLeft.innerHTML = `Ліній: <span class="text-amber-400 text-sm sm:text-base font-extrabold">${state.movesLeft}</span>`;
-                btnRoll.disabled = true;
-                btnRoll.classList.add('opacity-40', 'pointer-events-none');
-            } else if (state.phase === 'gameover') {
-                elMovesLeft.textContent = 'Гру завершено!';
-                btnRoll.disabled = true;
-                btnRoll.classList.add('opacity-40', 'pointer-events-none');
-            }
-        }
+                return res;
+            };
 
-        function showGameOver() {
-            sfx.playWin();
-            const hScore = state.scores.heart;
-            const cScore = state.scores.cross;
-            const humanScore = state.scores[config.humanSymbol];
-            const aiScore = state.scores[config.aiSymbol];
+            // Допоміжна функція: чи мають дві клітинки спільне вільне ребро (з'єднані в ланцюжок)
+            const getOpenNeighbors = (br, bc) => {
+                const neighbors = [];
+                // Верх
+                if (getHLine(br, bc) === 0 && br > 0) neighbors.push([br - 1, bc]);
+                // Низ
+                if (getHLine(br + 1, bc) === 0 && br < N - 2) neighbors.push([br + 1, bc]);
+                // Ліво
+                if (getVLine(br, bc) === 0 && bc > 0) neighbors.push([br, bc - 1]);
+                // Право
+                if (getVLine(br, bc + 1) === 0 && bc < N - 2) neighbors.push([br, bc + 1]);
+                return neighbors;
+            };
 
-            document.getElementById('final-score-heart').textContent = hScore;
-            document.getElementById('final-score-cross').textContent = cScore;
+            // BFS-аналіз розміру ланцюжка, якщо ми поставимо дане ребро
+            const measureChainImpact = (edge) => {
+                const adj = getAdjBoxes(edge);
+                const visited = new Set();
+                let totalChainBoxes = 0;
+                let maxSingleChain = 0;
 
-            const emojiEl = document.getElementById('winner-emoji');
-            const titleEl = document.getElementById('winner-title');
-            const subEl = document.getElementById('winner-subtitle');
+                // Тимчасово «ставимо» ребро у віртуальному підрахунку
+                const isThisEdge = (type, r, c) => edge.type === type && edge.r === r && edge.c === c;
+                const virtualSides = (r, c) => {
+                    let s = countBoxSides(r, c);
+                    if (
+                        (edge.type === 'h' && edge.c === c && (edge.r === r || edge.r === r + 1)) ||
+                        (edge.type === 'v' && edge.r === r && (edge.c === c || edge.c === c + 1))
+                    ) {
+                        s++;
+                    }
+                    return s;
+                };
 
-            if (humanScore > aiScore) {
-                emojiEl.textContent = '🏆';
-                titleEl.textContent = 'Перемога за вами!';
-                subEl.textContent = `Ви захопили ${humanScore} квадратів проти ${aiScore} у комп'ютера.`;
-            } else if (aiScore > humanScore) {
-                emojiEl.textContent = '🤖';
-                titleEl.textContent = "Переміг комп'ютер!";
-                subEl.textContent = `ШІ зібрав ${aiScore} квадратів проти ваших ${humanScore}. Спробуйте реванш!`;
-            } else {
-                emojiEl.textContent = '🤝';
-                titleEl.textContent = 'Бойова нічия!';
-                subEl.textContent = `Обидва гравці зібрали по ${humanScore} квадратів.`;
-            }
+                const virtualOpenNeighbors = (r, c) => {
+                    const list = [];
+                    if (getHLine(r, c) === 0 && !isThisEdge('h', r, c) && r > 0) list.push([r - 1, c]);
+                    if (getHLine(r + 1, c) === 0 && !isThisEdge('h', r + 1, c) && r < N - 2) list.push([r + 1, c]);
+                    if (getVLine(r, c) === 0 && !isThisEdge('v', r, c) && c > 0) list.push([r, c - 1]);
+                    if (getVLine(r, c + 1) === 0 && !isThisEdge('v', r, c + 1) && c < N - 2) list.push([r, c + 1]);
+                    return list;
+                };
 
-            modalGameover.classList.remove('hidden');
-        }
+                for (const [sr, sc] of adj) {
+                    const startKey = sr * (N - 1) + sc;
+                    if (visited.has(startKey)) continue;
+                    if (virtualSides(sr, sc) < 3) continue;
 
-        // --- РЕНДЕРИНГ НА CANVAS ---
-        function resizeCanvas() {
-            const rect = wrapper.getBoundingClientRect();
-            const dpr = window.devicePixelRatio || 1;
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        }
+                    let chainLen = 0;
+                    const queue = [[sr, sc]];
+                    visited.add(startKey);
 
-        function drawHeart(cx, cy, size, alpha = 1) {
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.scale(alpha, alpha);
-            ctx.strokeStyle = COLORS.heart;
-            ctx.lineWidth = Math.max(2, 2.8 * state.scale);
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            if (state.scale > 0.35) {
-                ctx.shadowColor = COLORS.heartGlow;
-                ctx.shadowBlur = 10 * state.scale;
-            }
-
-            const s = size * 0.34;
-            ctx.beginPath();
-            ctx.moveTo(0, s * 0.85);
-            ctx.bezierCurveTo(-s * 1.45, -s * 0.15, -s * 0.85, -s * 1.25, 0, -s * 0.45);
-            ctx.bezierCurveTo(s * 0.85, -s * 1.25, s * 1.45, -s * 0.15, 0, s * 0.85);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        function drawCross(cx, cy, size, alpha = 1) {
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.scale(alpha, alpha);
-            ctx.strokeStyle = COLORS.cross;
-            ctx.lineWidth = Math.max(2, 3.0 * state.scale);
-            ctx.lineCap = 'round';
-
-            if (state.scale > 0.35) {
-                ctx.shadowColor = COLORS.crossGlow;
-                ctx.shadowBlur = 10 * state.scale;
-            }
-
-            const s = size * 0.27;
-            ctx.beginPath();
-            ctx.moveTo(-s, -s);
-            ctx.lineTo(s, s);
-            ctx.moveTo(s, -s);
-            ctx.lineTo(-s, s);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        function renderLoop() {
-            const rect = wrapper.getBoundingClientRect();
-            const width = rect.width;
-            const height = rect.height;
-
-            // Плавна інерція камери при фокусі на останній хід
-            if (state.targetOffsetX !== null && state.targetOffsetY !== null) {
-                state.offsetX += (state.targetOffsetX - state.offsetX) * 0.16;
-                state.offsetY += (state.targetOffsetY - state.offsetY) * 0.16;
-                if (Math.hypot(state.targetOffsetX - state.offsetX, state.targetOffsetY - state.offsetY) < 0.8) {
-                    state.offsetX = state.targetOffsetX;
-                    state.offsetY = state.targetOffsetY;
-                    state.targetOffsetX = null;
-                    state.targetOffsetY = null;
+                    while (queue.length > 0 && chainLen < 120) {
+                        const [cr, cc] = queue.shift();
+                        chainLen++;
+                        for (const [nr, nc] of virtualOpenNeighbors(cr, cc)) {
+                            const nKey = nr * (N - 1) + nc;
+                            if (!visited.has(nKey) && virtualSides(nr, nc) >= 2) {
+                                visited.add(nKey);
+                                queue.push([nr, nc]);
+                            }
+                        }
+                    }
+                    totalChainBoxes += chainLen;
+                    if (chainLen > maxSingleChain) maxSingleChain = chainLen;
                 }
-            }
 
-            ctx.fillStyle = COLORS.bg;
-            ctx.fillRect(0, 0, width, height);
+                return { totalChainBoxes, maxSingleChain };
+            };
 
-            if (!state.hLines) {
-                requestAnimationFrame(renderLoop);
-                return;
-            }
+            // ЕТАП 1: Є готові 3-сторонні квадрати (scoringMoves)
+            if (scoringMoves.length > 0) {
+                // Пріоритет ребрам, які закривають одразу 2 квадрати однією лінією (подвійний удар!)
+                let bestScoreMove = scoringMoves[0];
+                let bestImmediateGain = -1;
 
-            if (state.activeAnims.size > 0) {
-                for (const bIdx of state.activeAnims) {
-                    state.boxAnim[bIdx] += 0.08;
-                    if (state.boxAnim[bIdx] >= 1) {
-                        state.boxAnim[bIdx] = 1;
-                        state.activeAnims.delete(bIdx);
+                for (const m of scoringMoves) {
+                    let gain = 0;
+                    for (const [br, bc] of getAdjBoxes(m)) {
+                        if (countBoxSides(br, bc) === 3) gain++;
+                    }
+                    if (gain > bestImmediateGain) {
+                        bestImmediateGain = gain;
+                        bestScoreMove = m;
                     }
                 }
-            }
 
-            const N = config.gridSize;
-            const step = state.cellSize * state.scale;
+                // Тактика Double-Cross (Подвійне перехрестя) в ендшпілі:
+                // Якщо увімкнено бонусний хід, безпечних ходів на полі більше немає,
+                // а поточний ланцюжок має довжину рівно 2 (залишилось 2 клітинки, з'єднані одним ребром),
+                // і після нього є інший великий ланцюжок — професійний гравець віддає ці 2 клітинки, щоб забрати великий ланцюжок!
+                if (bonusOn && safeMoves.length === 0 && scoringMoves.length === 1 && riskyMoves.length > 0) {
+                    const m = scoringMoves[0];
+                    const adj = getAdjBoxes(m);
+                    if (adj.length === 2) {
+                        const [b1, b2] = adj;
+                        const s1 = countBoxSides(b1[0], b1[1]);
+                        const s2 = countBoxSides(b2[0], b2[1]);
+                        // Якщо одна клітинка має 3 сторони, а сусідня (через це ж ребро!) має 2 сторони — це кінець ланцюжка з 2 клітинок
+                        const twoBoxEnd = (s1 === 3 && s2 === 2) || (s2 === 3 && s1 === 2);
+                        if (twoBoxEnd) {
+                            // Перевіряємо, чи є на полі інший закритий ланцюжок довжиною >= 3
+                            let biggestOtherChain = 0;
+                            let smallestSacrifice = null;
+                            let minSacLen = Infinity;
 
-            // Viewport Culling (відмальовуємо лише те, що бачить гравець на екрані)
-            const cStart = Math.max(0, Math.floor(-state.offsetX / step) - 1);
-            const cEnd = Math.min(N - 1, Math.ceil((width - state.offsetX) / step) + 1);
-            const rStart = Math.max(0, Math.floor(-state.offsetY / step) - 1);
-            const rEnd = Math.min(N - 1, Math.ceil((height - state.offsetY) / step) + 1);
+                            for (const rm of riskyMoves) {
+                                // Не вибираємо ребро всередині поточної двійки
+                                const rAdj = getAdjBoxes(rm);
+                                const touchesCurrent = rAdj.some(([rr, rc]) =>
+                                    (rr === b1[0] && rc === b1[1]) || (rr === b2[0] && rc === b2[1])
+                                );
+                                if (touchesCurrent) continue;
 
-            // 1. Тонка допоміжна сітка
-            if (step >= 14) {
-                ctx.strokeStyle = COLORS.gridHint;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                for (let r = rStart; r <= rEnd; r++) {
-                    const y = state.offsetY + r * step;
-                    ctx.moveTo(state.offsetX + cStart * step, y);
-                    ctx.lineTo(state.offsetX + cEnd * step, y);
-                }
-                for (let c = cStart; c <= cEnd; c++) {
-                    const x = state.offsetX + c * step;
-                    ctx.moveTo(x, state.offsetY + rStart * step);
-                    ctx.lineTo(x, state.offsetY + rEnd * step);
-                }
-                ctx.stroke();
-            }
+                                const { totalChainBoxes } = measureChainImpact(rm);
+                                if (totalChainBoxes > biggestOtherChain) biggestOtherChain = totalChainBoxes;
+                                if (totalChainBoxes < minSacLen) {
+                                    minSacLen = totalChainBoxes;
+                                    smallestSacrifice = rm;
+                                }
+                            }
 
-            // 2. Захоплені квадрати
-            const boxRStart = Math.max(0, rStart);
-            const boxREnd = Math.min(N - 2, rEnd);
-            const boxCStart = Math.max(0, cStart);
-            const boxCEnd = Math.min(N - 2, cEnd);
-
-            for (let r = boxRStart; r <= boxREnd; r++) {
-                for (let c = boxCStart; c <= boxCEnd; c++) {
-                    const bIdx = r * (N - 1) + c;
-                    const owner = state.boxes[bIdx];
-                    if (owner !== 0) {
-                        const x = state.offsetX + c * step;
-                        const y = state.offsetY + r * step;
-                        const animScale = state.boxAnim[bIdx] || 1;
-
-                        ctx.fillStyle = owner === 1 ? COLORS.heartFill : COLORS.crossFill;
-                        ctx.fillRect(x + 2, y + 2, step - 4, step - 4);
-
-                        if (step >= 10) {
-                            const cx = x + step / 2;
-                            const cy = y + step / 2;
-                            if (owner === 1) drawHeart(cx, cy, step, animScale);
-                            else drawCross(cx, cy, step, animScale);
+                            // Якщо інший ланцюжок >= 4 клітинок, вигідніше пожертвувати ці 2 клітинки (Double-Cross)!
+                            if (biggestOtherChain >= 4 && smallestSacrifice) {
+                                return smallestSacrifice;
+                            }
                         }
                     }
                 }
+
+                return bestScoreMove;
             }
 
-            // 3. Підсвічування при наведенні мишею або дотику пальцем на iPhone/iPad
-            const previewEdge = state.touchPreviewEdge || state.hoveredEdge;
-            if (
-                previewEdge &&
-                state.turn === 'human' &&
-                state.phase === 'draw' &&
-                !state.panMode &&
-                !state.spacePressed &&
-                !state.dragMoved
-            ) {
-                const { type, r, c } = previewEdge;
-                const isFree = type === 'h' ? getHLine(r, c) === 0 : getVLine(r, c) === 0;
-                if (isFree) {
-                    const x1 = state.offsetX + c * step;
-                    const y1 = state.offsetY + r * step;
-                    const x2 = type === 'h' ? x1 + step : x1;
-                    const y2 = type === 'v' ? y1 + step : y1;
+            // ЕТАП 2: Самостійне вибудовування комбінації (Self-Setup Combo) за рахунок кубика!
+            // Якщо у ШІ залишилось >= 2 ліній у цьому ході (movesLeft >= 2), він може поставити 3-тю сторону
+            // і відразу закрити цей квадрат (або цілий ланцюжок!) наступними лініями до кінця свого ходу.
+            if (movesLeft >= 2 && riskyMoves.length > 0) {
+                let bestComboMove = null;
+                let bestComboValue = 0;
 
-                    ctx.save();
-                    ctx.strokeStyle = config.humanSymbol === 'heart' ? 'rgba(255, 42, 95, 0.7)' : 'rgba(0, 210, 255, 0.7)';
-                    ctx.lineWidth = Math.max(4, 6 * state.scale);
-                    ctx.lineCap = 'round';
-                    ctx.setLineDash([6 * state.scale, 6 * state.scale]);
-                    ctx.beginPath();
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x2, y2);
-                    ctx.stroke();
-                    ctx.restore();
-                }
-            }
+                for (const m of riskyMoves) {
+                    const { totalChainBoxes, maxSingleChain } = measureChainImpact(m);
+                    // Скільки ліній потрібно, щоб відкрити і повністю забрати цей ланцюжок:
+                    // 1 лінія на відкриття (3-тя сторона) + totalChainBoxes ліній на закриття (якщо без бонусу)
+                    // Якщо бонус увімкнено — потрібно лише 2 лінії (1 відкрити + 1 закрити першу, решта закриються бонусами!)
+                    const linesNeeded = bonusOn ? 2 : (1 + totalChainBoxes);
 
-            // 4. Проведені горизонтальні та вертикальні лінії
-            const lineWidth = Math.max(2, 4.2 * state.scale);
-            const dotGap = Math.min(step * 0.16, 7 * state.scale);
-
-            ctx.lineCap = 'round';
-            ctx.lineWidth = lineWidth;
-
-            for (let r = rStart; r <= rEnd; r++) {
-                const y = state.offsetY + r * step;
-                for (let c = boxCStart; c <= boxCEnd; c++) {
-                    const owner = getHLine(r, c);
-                    if (owner !== 0) {
-                        const x1 = state.offsetX + c * step + dotGap;
-                        const x2 = state.offsetX + (c + 1) * step - dotGap;
-                        const isLast = state.lastLine && state.lastLine.type === 'h' && state.lastLine.r === r && state.lastLine.c === c;
-
-                        ctx.strokeStyle = owner === 1 ? COLORS.heart : COLORS.cross;
-                        if (isLast && step > 12) {
-                            ctx.save();
-                            ctx.shadowColor = owner === 1 ? COLORS.heart : COLORS.cross;
-                            ctx.shadowBlur = 16;
-                            ctx.lineWidth = lineWidth * 1.25;
-                            ctx.beginPath();
-                            ctx.moveTo(x1, y);
-                            ctx.lineTo(x2, y);
-                            ctx.stroke();
-                            ctx.restore();
-                        } else {
-                            ctx.beginPath();
-                            ctx.moveTo(x1, y);
-                            ctx.lineTo(x2, y);
-                            ctx.stroke();
+                    if (linesNeeded <= movesLeft && totalChainBoxes >= 1) {
+                        // Перевіряємо, щоб ми не відкрили одночасно другий величезний ланцюжок, який не встигнемо закрити
+                        if (maxSingleChain === totalChainBoxes || bonusOn) {
+                            if (totalChainBoxes > bestComboValue) {
+                                bestComboValue = totalChainBoxes;
+                                bestComboMove = m;
+                            }
                         }
                     }
                 }
+
+                if (bestComboMove) {
+                    return bestComboMove;
+                }
             }
 
-            for (let r = boxRStart; r <= boxREnd; r++) {
-                for (let c = cStart; c <= cEnd; c++) {
-                    const owner = getVLine(r, c);
-                    if (owner !== 0) {
-                        const x = state.offsetX + c * step;
-                        const y1 = state.offsetY + r * step + dotGap;
-                        const y2 = state.offsetY + (r + 1) * step - dotGap;
-                        const isLast = state.lastLine && state.lastLine.type === 'v' && state.lastLine.r === r && state.lastLine.c === c;
+            // ЕТАП 3: Безпечні ходи (не створюють 3-ї сторони) — стратегічний вибір
+            if (safeMoves.length > 0) {
+                let bestSafe = safeMoves[0];
+                let bestScore = -Infinity;
 
-                        ctx.strokeStyle = owner === 1 ? COLORS.heart : COLORS.cross;
-                        if (isLast && step > 12) {
-                            ctx.save();
-                            ctx.shadowColor = owner === 1 ? COLORS.heart : COLORS.cross;
-                            ctx.shadowBlur = 16;
-                            ctx.lineWidth = lineWidth * 1.25;
-                            ctx.beginPath();
-                            ctx.moveTo(x, y1);
-                            ctx.lineTo(x, y2);
-                            ctx.stroke();
-                            ctx.restore();
-                        } else {
-                            ctx.beginPath();
-                            ctx.moveTo(x, y1);
-                            ctx.lineTo(x, y2);
-                            ctx.stroke();
+                // Для швидкодії на великих сітках оцінюємо до 80 кандидатів
+                const candidates = safeMoves.length > 80
+                    ? safeMoves.sort(() => Math.random() - 0.5).slice(0, 80)
+                    : safeMoves;
+
+                const center = (N - 1) / 2;
+
+                for (const m of candidates) {
+                    let score = 0;
+                    const adj = getAdjBoxes(m);
+
+                    for (const [br, bc] of adj) {
+                        const s = countBoxSides(br, bc);
+                        if (s === 0) {
+                            // Чудово: перетворюємо 0 сторін на 1 (найбезпечніший розвиток)
+                            score += 12;
+                        } else if (s === 1) {
+                            // Створюємо 2-гу сторону (коридор) — трохи менш бажано, ніж 0->1,
+                            // але добре, якщо допомагає поділити поле
+                            score += 4;
                         }
                     }
-                }
-            }
 
-            // 5. Точки сітки
-            if (step >= 6) {
-                const dotRadius = Math.max(1.5, Math.min(4.4, 3.6 * state.scale));
-                ctx.fillStyle = COLORS.dot;
-                ctx.beginPath();
-                for (let r = rStart; r <= rEnd; r++) {
-                    const y = state.offsetY + r * step;
-                    for (let c = cStart; c <= cEnd; c++) {
-                        const x = state.offsetX + c * step;
-                        ctx.moveTo(x + dotRadius, y);
-                        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+                    // Бонус за гру біля країв сітки (допомагає формувати контрольовані зони)
+                    if (m.type === 'h' && (m.r === 0 || m.r === N - 1)) score += 5;
+                    if (m.type === 'v' && (m.c === 0 || m.c === N - 1)) score += 5;
+
+                    // Легке тяжіння до центру на середніх сітках (5x5 - 15x15) для захоплення ключових перехресть
+                    if (N <= 20) {
+                        const distCenter = Math.hypot(m.r - center, m.c - center);
+                        score -= distCenter * 0.35;
+                    }
+
+                    // Невелика випадковість серед рівноцінних ходів, щоб партії не повторювались
+                    score += Math.random() * 1.8;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestSafe = m;
                     }
                 }
-                ctx.fill();
+
+                return bestSafe;
             }
 
-            requestAnimationFrame(renderLoop);
-        }
+            // ЕТАП 4: Вимушена жертва (безпечних ходів більше немає)
+            // Знаходимо ребро, яке відкриває НАЙКОРОТШИЙ ланцюжок для суперника!
+            if (riskyMoves.length > 0) {
+                let bestSacrifice = riskyMoves[0];
+                let minConceded = Infinity;
 
-        // --- ПОШУК НАЙБЛИЖЧОЇ ЛІНІЇ (Збільшена чутливість для пальців на iOS) ---
-        function getClosestEdge(clientX, clientY, isTouch = false) {
-            const rect = canvas.getBoundingClientRect();
-            const px = clientX - rect.left;
-            const py = clientY - rect.top;
+                for (const m of riskyMoves) {
+                    const { totalChainBoxes } = measureChainImpact(m);
+                    // Якщо у нас залишилось >= 2 ходів (наприклад, на кубику випало 3, але всі ходи ризиковані),
+                    // і ми можемо частину цього ланцюжка з'їсти самі:
+                    const canCaptureSelf = bonusOn
+                        ? (movesLeft >= 2 ? totalChainBoxes : 0)
+                        : Math.max(0, Math.min(totalChainBoxes, movesLeft - 1));
+                    const netLoss = totalChainBoxes - canCaptureSelf * 2;
 
-            const step = state.cellSize * state.scale;
-            const gx = (px - state.offsetX) / step;
-            const gy = (py - state.offsetY) / step;
-
-            const N = config.gridSize;
-            const pad = isTouch ? 0.45 : 0.35;
-            if (gx < -pad || gx > N - 1 + pad || gy < -pad || gy > N - 1 + pad) {
-                return null;
-            }
-
-            const nearestR = Math.round(gy);
-            const nearestC = Math.round(gx);
-            const distToRow = Math.abs(gy - nearestR);
-            const distToCol = Math.abs(gx - nearestC);
-
-            // На сенсорному екрані робимо радіус захоплення більшим (0.44 клітинки), щоб пальцем було легко влучити
-            const threshold = isTouch ? 0.44 : 0.34;
-
-            if (distToRow < distToCol && distToRow < threshold) {
-                const c = Math.floor(gx);
-                if (nearestR >= 0 && nearestR < N && c >= 0 && c < N - 1) {
-                    return { type: 'h', r: nearestR, c };
+                    if (netLoss < minConceded) {
+                        minConceded = netLoss;
+                        bestSacrifice = m;
+                    }
                 }
-            } else if (distToCol <= distToRow && distToCol < threshold) {
-                const r = Math.floor(gy);
-                if (r >= 0 && r < N - 1 && nearestC >= 0 && nearestC < N) {
-                    return { type: 'v', r, c: nearestC };
-                }
+
+                return bestSacrifice;
             }
 
             return null;
